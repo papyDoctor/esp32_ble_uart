@@ -1,32 +1,22 @@
-#![no_std]
-#![no_main]
-
 use bleps::{
     ad_structure::{
-        create_advertising_data, AdStructure, BR_EDR_NOT_SUPPORTED, LE_GENERAL_DISCOVERABLE,
+        AdStructure, BR_EDR_NOT_SUPPORTED, LE_GENERAL_DISCOVERABLE, create_advertising_data,
     },
     async_attribute_server::AttributeServer,
     asynch::Ble,
     attribute_server::NotificationData,
     gatt,
 };
-use core::{cell::RefCell, panic::PanicInfo};
-use embassy_executor::Spawner;
-use esp_alloc as _;
-use esp_hal::timer::systimer::SystemTimer;
+use core::cell::RefCell;
 use esp_hal::{
-    clock::CpuClock,
     gpio::{Input, InputConfig, Pull},
     rng::Rng,
     time,
     timer::timg::TimerGroup,
 };
 use esp_println::println;
-use esp_wifi::{ble::controller::BleConnector, init, EspWifiController};
-esp_bootloader_esp_idf::esp_app_desc!();
+use esp_wifi::{EspWifiController, ble::controller::BleConnector, init};
 
-// When you are okay with using a nightly compiler
-// it's better to use https://docs.rs/static_cell/2.1.0/static_cell/macro.make_static.html
 macro_rules! mk_static {
     ($t:ty,$val:expr) => {{
         static STATIC_CELL: static_cell::StaticCell<$t> = static_cell::StaticCell::new();
@@ -35,32 +25,28 @@ macro_rules! mk_static {
         x
     }};
 }
-
-#[esp_hal_embassy::main]
-async fn main(_spawner: Spawner) -> ! {
-    esp_println::logger::init_logger_from_env();
-    let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
-    let peripherals = esp_hal::init(config);
-
+#[embassy_executor::task]
+pub async fn task_bluetooth(
+    timg0: esp_hal::peripherals::TIMG0<'static>,
+    rng: esp_hal::peripherals::RNG<'static>,
+    radio_clk: esp_hal::peripherals::RADIO_CLK<'static>,
+    gpio9: esp_hal::peripherals::GPIO9<'static>,
+    mut bluetooth: esp_hal::peripherals::BT<'static>,
+) {
+    println!("task_bluetooth started");
+    // Init ESP wifi engine
     esp_alloc::heap_allocator!(size: 72 * 1024);
-    let timg0 = TimerGroup::new(peripherals.TIMG0);
+    let timg0 = TimerGroup::new(timg0);
     let esp_wifi_ctrl = &*mk_static!(
         EspWifiController<'static>,
-        init(
-            timg0.timer0,
-            Rng::new(peripherals.RNG),
-            peripherals.RADIO_CLK,
-        )
-        .unwrap()
+        init(timg0.timer0, Rng::new(rng), radio_clk).unwrap()
     );
 
+    // Take the button pin
     let config = InputConfig::default().with_pull(Pull::Down);
-    let button = Input::new(peripherals.GPIO9, config);
+    let button: Input<'_> = Input::new(gpio9, config);
 
-    let systimer = SystemTimer::new(peripherals.SYSTIMER);
-    esp_hal_embassy::init(systimer.alarm0);
-
-    let mut bluetooth = peripherals.BT;
+    // Initialize BLE
     let connector = BleConnector::new(&esp_wifi_ctrl, bluetooth.reborrow());
 
     let now = || time::Instant::now().duration_since_epoch().as_millis();
@@ -69,7 +55,6 @@ async fn main(_spawner: Spawner) -> ! {
 
     let pin_ref = RefCell::new(button);
     let pin_ref = &pin_ref;
-
     loop {
         println!("{:?}", ble.init().await);
         println!("{:?}", ble.cmd_set_le_advertising_parameters().await);
@@ -89,7 +74,7 @@ async fn main(_spawner: Spawner) -> ! {
             .await
         );
         println!("{:?}", ble.cmd_set_le_advertise_enable(true).await);
-        println!("started advertising");
+        println!("Started advertising");
 
         let mut wf = |offset: usize, data: &[u8]| {
             println!("RECEIVED: {} {:?}", offset, data);
@@ -142,10 +127,4 @@ async fn main(_spawner: Spawner) -> ! {
 
         srv.run(&mut notifier).await.unwrap();
     }
-}
-
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    println!("Panic occurred: {:?}", info);
-    loop {}
 }
