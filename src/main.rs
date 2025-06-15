@@ -5,7 +5,6 @@ mod task_led;
 
 use core::panic::PanicInfo;
 use embassy_executor::Spawner;
-use embassy_futures::yield_now;
 use esp_alloc as _;
 use esp_hal::clock::CpuClock;
 use esp_hal::timer::systimer::SystemTimer;
@@ -31,14 +30,13 @@ async fn main(spawner: Spawner) -> ! {
     let systimer = SystemTimer::new(peripherals.SYSTIMER);
     esp_hal_embassy::init(systimer.alarm0);
 
-    // Spawn tasks
     spawner.spawn(task_led(gpio8)).unwrap();
     spawner
         .spawn(task_bluetooth(timg0, rng, radio_clk, gpio9, bluetooth))
         .unwrap();
 
     loop {
-        yield_now().await;
+        embassy_time::Timer::after_millis(1000).await;
     }
 }
 
