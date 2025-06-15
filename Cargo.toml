@@ -42,8 +42,6 @@ esp-wifi = { version = "0.14.1", features = [
   "log-04",
 ] }
 static_cell = { version = "2.1.0", features = ["nightly"] }
-trouble-host = { version = "0.1.0", features = ["gatt"] }
-
 
 [profile.dev]
 # Rust debug is too slow.
