@@ -726,7 +726,6 @@ dependencies = [
  "cfg-if",
  "critical-section",
  "embassy-executor",
- "embassy-futures",
  "embassy-time",
  "embedded-io",
  "embedded-io-async",

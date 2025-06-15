@@ -25,6 +25,7 @@ macro_rules! mk_static {
         x
     }};
 }
+
 #[embassy_executor::task]
 pub async fn task_bluetooth(
     timg0: esp_hal::peripherals::TIMG0<'static>,
